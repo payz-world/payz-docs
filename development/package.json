@@ -1,0 +1,10 @@
+{
+  "name": "payz-docs-development-workspace",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "pnpm --filter payz-docs dev",
+    "typecheck": "pnpm --filter payz-docs typecheck",
+    "build": "pnpm --filter payz-docs build"
+  }
+}
