@@ -1,0 +1,1128 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: Normalized payz catalog, order, and rewards API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: catalog
+    description: Region-aware product catalog
+  - name: orders
+    description: Independent payz purchase orders
+  - name: payments
+    description: Payment options and server-authoritative purchase quotes
+  - name: rewards
+    description: Spending rewards
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /catalog/regions:
+    get:
+      operationId: listRegions
+      tags: [catalog]
+      summary: List supported regions
+      responses:
+        "200":
+          description: Supported purchase regions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Region"
+        "503":
+          description: The synchronized Payz catalog is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /session:
+    post:
+      operationId: createGuestSession
+      tags: [orders]
+      summary: Create or resume a secure guest session
+      responses:
+        "200":
+          description: Session cookie is set in the response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuestSessionStatus"
+        "503":
+          description: Secure guest sessions are unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /catalog/categories:
+    get:
+      operationId: listCategories
+      tags: [catalog]
+      summary: List Payz shopping categories present in the synchronized catalog snapshot
+      parameters:
+        - in: query
+          name: region
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Product categories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Category"
+        "503":
+          description: The synchronized Payz catalog is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /catalog/home:
+    get:
+      operationId: getCatalogHome
+      tags: [catalog]
+      summary: Get ranked Payz storefront sections for the selected region
+      parameters:
+        - in: query
+          name: region
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Curated global, regional, and category product sections
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogHome"
+        "400":
+          description: Unsupported region
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          description: The synchronized Payz catalog is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /catalog/products:
+    get:
+      operationId: listProducts
+      tags: [catalog]
+      summary: Search or paginate available grouped products from the synchronized catalog snapshot
+      parameters:
+        - in: query
+          name: region
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: category
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: search
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: currency
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: pageSize
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        "200":
+          description: Matching catalog products
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedProducts"
+        "400":
+          description: Invalid search or unsupported region
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          description: The synchronized Payz catalog is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /catalog/product:
+    get:
+      operationId: getProduct
+      tags: [catalog]
+      summary: Get a grouped product and, optionally, its variant in a selected region
+      parameters:
+        - in: query
+          name: productId
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: region
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Product details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "400":
+          description: Invalid product query or unsupported region
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: Product is not available in the selected region
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          description: The synchronized Payz catalog is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /payments/networks:
+    get:
+      operationId: listPaymentNetworks
+      tags: [payments]
+      summary: List the Payz database payment catalog
+      responses:
+        "200":
+          description: Networks and assets from the Payz database; no provider calls are made
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PaymentNetwork"
+        "503":
+          description: The Payz payment catalog is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /payments/availability:
+    get:
+      operationId: checkPaymentAvailability
+      tags: [payments]
+      summary: Check current route availability for a selected catalog amount
+      description: Read-only amount-specific check. It may request current provider currencies, pairs, ranges, and estimates, but never creates an exchange, order, or deposit address.
+      parameters:
+        - name: productId
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: region
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 2
+        - name: denomination
+          in: query
+          required: true
+          schema:
+            type: number
+            exclusiveMinimum: 0
+      responses:
+        "200":
+          description: Current normalized status for every Payz payment asset; no provider payload or exchange ID is returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentAvailabilityResponse"
+        "400":
+          description: Invalid availability query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: The selected catalog amount is not currently available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          description: The catalog or route availability service is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /orders:
+    post:
+      operationId: createOrder
+      tags: [orders]
+      summary: Create an independent purchase order
+      security:
+        - GuestSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderInput"
+      responses:
+        "201":
+          description: Order created with a unique payment destination; a signed guest-session cookie is set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "400":
+          description: Invalid order request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: Product is not available in the selected region
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          description: Payment or fulfillment service is not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /orders/{orderId}:
+    get:
+      operationId: getOrder
+      tags: [orders]
+      summary: Get an order and its public status timeline
+      security:
+        - GuestSession: []
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Normalized payz order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "404":
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "400":
+          description: Invalid order ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /orders/{orderId}/purchase-access:
+    post:
+      operationId: issuePurchaseAccessLink
+      tags: [purchases]
+      summary: Issue the one-time delivery link for a fulfilled purchase owned by this guest session
+      security:
+        - GuestSession: []
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: One-time secure purchase token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PurchaseAccessLink"
+        "404":
+          description: Purchase access is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /purchase/{purchaseToken}:
+    get:
+      operationId: getPurchasePage
+      tags: [purchases]
+      summary: Load non-sensitive details for an active one-time purchase
+      parameters:
+        - in: path
+          name: purchaseToken
+          required: true
+          schema:
+            type: string
+            minLength: 43
+            maxLength: 43
+      responses:
+        "200":
+          description: Secure delivery page metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PurchasePage"
+        "404":
+          description: Purchase no longer available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /purchase/{purchaseToken}/reveal:
+    post:
+      operationId: revealPurchaseDelivery
+      tags: [purchases]
+      summary: Reveal fulfillment details for an active one-time purchase
+      parameters:
+        - in: path
+          name: purchaseToken
+          required: true
+          schema:
+            type: string
+            minLength: 43
+            maxLength: 43
+      responses:
+        "200":
+          description: Fulfillment details supplied by the fulfillment provider
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PurchaseDelivery"
+        "404":
+          description: Purchase no longer available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /purchase/{purchaseToken}/events:
+    post:
+      operationId: recordPurchaseDeliveryEvent
+      tags: [purchases]
+      summary: Record a non-sensitive delivery action for an active purchase
+      parameters:
+        - in: path
+          name: purchaseToken
+          required: true
+          schema:
+            type: string
+            minLength: 43
+            maxLength: 43
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PurchaseDeliveryEventInput"
+      responses:
+        "200":
+          description: Event recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PurchaseEventRecorded"
+        "404":
+          description: Purchase no longer available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /purchase/{purchaseToken}/download:
+    get:
+      operationId: downloadPurchase
+      tags: [purchases]
+      summary: Download the generated purchase details file for an active purchase
+      parameters:
+        - in: path
+          name: purchaseToken
+          required: true
+          schema:
+            type: string
+            minLength: 43
+            maxLength: 43
+      responses:
+        "200":
+          description: Private purchase details PDF
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Purchase no longer available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /purchase/{purchaseToken}/consume:
+    post:
+      operationId: consumePurchaseAccess
+      tags: [purchases]
+      summary: Atomically end customer access to a one-time purchase
+      parameters:
+        - in: path
+          name: purchaseToken
+          required: true
+          schema:
+            type: string
+            minLength: 43
+            maxLength: 43
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PurchaseConsumeInput"
+      responses:
+        "200":
+          description: Purchase access has been permanently consumed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PurchaseConsumeResponse"
+        "400":
+          description: Required delivery confirmations are incomplete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: Purchase no longer available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /rewards:
+    get:
+      operationId: getRewards
+      tags: [rewards]
+      summary: Get rewards summary and activity
+      responses:
+        "200":
+          description: Rewards summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RewardsSummary"
+        "503":
+          description: Rewards are not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+components:
+  securitySchemes:
+    GuestSession:
+      type: apiKey
+      in: cookie
+      name: payz_guest
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required: [status]
+    ApiError:
+      type: object
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+      required: [error, code]
+    GuestSessionStatus:
+      type: object
+      properties:
+        ready:
+          type: boolean
+      required: [ready]
+    Region:
+      type: object
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        currency:
+          type: string
+        currencySymbol:
+          type: string
+      required: [code, name, currency, currencySymbol]
+    Category:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+      required: [id, name]
+    CatalogCategorySection:
+      type: object
+      properties:
+        categoryId:
+          type: string
+        categoryName:
+          type: string
+        products:
+          type: array
+          items:
+            $ref: "#/components/schemas/Product"
+      required: [categoryId, categoryName, products]
+    CatalogHome:
+      type: object
+      properties:
+        globalTop:
+          type: array
+          description: Broadly relevant products available in the selected region, ranked from live metadata
+          items:
+            $ref: "#/components/schemas/Product"
+        regionalTop:
+          type: array
+          description: Additional region-specific products ranked from live metadata; empty for all-regions browsing
+          items:
+            $ref: "#/components/schemas/Product"
+        categorySections:
+          type: array
+          items:
+            $ref: "#/components/schemas/CatalogCategorySection"
+      required: [globalTop, regionalTop, categorySections]
+    PaginatedProducts:
+      type: object
+      properties:
+        products:
+          type: array
+          items:
+            $ref: "#/components/schemas/Product"
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+        total:
+          type: integer
+          minimum: 0
+        totalPages:
+          type: integer
+          minimum: 0
+      required: [products, page, pageSize, total, totalPages]
+    Product:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Stable product group ID shared by its regional variants
+        variantId:
+          type: ["string", "null"]
+          description: Region-specific product ID used for verified quotes and orders
+        brand:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        categoryId:
+          type: string
+        categoryName:
+          type: string
+        regionCode:
+          type: ["string", "null"]
+        currency:
+          type: ["string", "null"]
+        currencySymbol:
+          type: ["string", "null"]
+        startingPrice:
+          type: ["number", "null"]
+        denominations:
+          type: array
+          items:
+            type: number
+        denominationLabels:
+          type: object
+          description: Provider subscription or package labels keyed by the purchase amount
+          additionalProperties:
+            type: string
+        range:
+          oneOf:
+            - $ref: "#/components/schemas/ProductRange"
+            - type: "null"
+        regions:
+          type: array
+          description: Regions where this product appears in the synchronized catalog snapshot
+          items:
+            $ref: "#/components/schemas/Region"
+        availableRegions:
+          type: array
+          description: Regions with an in-stock, eligible denomination or range
+          items:
+            $ref: "#/components/schemas/Region"
+        currencies:
+          type: array
+          items:
+            type: string
+        available:
+          type: boolean
+        featured:
+          type: boolean
+        isPreview:
+          type: boolean
+        logoKey:
+          type: string
+        brandColor:
+          type: string
+        image:
+          type: ["string", "null"]
+      required:
+        - id
+        - variantId
+        - brand
+        - name
+        - description
+        - categoryId
+        - categoryName
+        - regionCode
+        - currency
+        - currencySymbol
+        - startingPrice
+        - denominations
+        - range
+        - regions
+        - availableRegions
+        - currencies
+        - available
+        - featured
+        - isPreview
+        - logoKey
+        - brandColor
+        - image
+    ProductRange:
+      type: object
+      properties:
+        min:
+          type: number
+        max:
+          type: number
+        step:
+          type: number
+      required: [min, max, step]
+    PaymentNetworkCode:
+      type: string
+    PaymentAssetType:
+      type: string
+      enum: [native, rwa]
+    PaymentNetwork:
+      type: object
+      properties:
+        id:
+          type: string
+        code:
+          $ref: "#/components/schemas/PaymentNetworkCode"
+        name:
+          type: string
+        logoUrl:
+          type: ["string", "null"]
+        enabled:
+          type: boolean
+          description: Network is enabled in Payz configuration
+        available:
+          type: boolean
+          description: True when this Payz-enabled network has at least one enabled asset; provider execution is checked at checkout
+        assets:
+          type: array
+          items:
+            $ref: "#/components/schemas/PaymentAsset"
+      required: [id, code, name, logoUrl, enabled, available, assets]
+    PaymentAsset:
+      type: object
+      properties:
+        id:
+          type: string
+        ticker:
+          type: string
+        name:
+          type: string
+        assetType:
+          $ref: "#/components/schemas/PaymentAssetType"
+        contractAddress:
+          type: ["string", "null"]
+        decimals:
+          type: ["integer", "null"]
+        logoUrl:
+          type: ["string", "null"]
+        enabled:
+          type: boolean
+        configured:
+          type: boolean
+          description: True when Payz has a local candidate mapping for this asset; it does not confirm live provider support
+        available:
+          type: boolean
+          description: True when this asset is enabled in Payz; the live payment route is checked after amount selection and again at checkout
+        status:
+          $ref: "#/components/schemas/PaymentAssetStatus"
+        availabilityReason:
+          type: ["string", "null"]
+        sortOrder:
+          type: integer
+      required:
+        - id
+        - ticker
+        - name
+        - assetType
+        - contractAddress
+        - decimals
+        - logoUrl
+        - enabled
+        - configured
+        - available
+        - status
+        - availabilityReason
+        - sortOrder
+    PaymentAssetStatus:
+      type: string
+      enum: [AVAILABLE, DISABLED]
+    PaymentAvailabilityStatus:
+      type: string
+      enum: [available, coming_soon, temporarily_unavailable, disabled]
+    PaymentRouteAvailability:
+      type: object
+      properties:
+        networkId:
+          type: string
+        assetId:
+          type: string
+        status:
+          $ref: "#/components/schemas/PaymentAvailabilityStatus"
+      required: [networkId, assetId, status]
+    PaymentAvailabilityResponse:
+      type: object
+      properties:
+        productId:
+          type: string
+        region:
+          type: string
+        denomination:
+          type: number
+        checkedAt:
+          type: string
+          format: date-time
+        routes:
+          type: array
+          items:
+            $ref: "#/components/schemas/PaymentRouteAvailability"
+      required: [productId, region, denomination, checkedAt, routes]
+    OrderInput:
+      type: object
+      properties:
+        productId:
+          type: string
+        region:
+          type: string
+        denomination:
+          type: number
+        networkId:
+          type: string
+        assetId:
+          type: string
+        idempotencyKey:
+          type: string
+          format: uuid
+      required: [productId, region, denomination, networkId, assetId, idempotencyKey]
+    OrderStatus:
+      type: string
+      enum:
+        - waiting_payment
+        - payment_detected
+        - payment_confirming
+        - payment_confirmed
+        - processing_purchase
+        - purchase_ready
+        - completed
+        - failed
+        - manual_review
+        - refund_required
+        - expired
+    PaymentStatus:
+      type: string
+      enum:
+        - waiting
+        - detected
+        - confirming
+        - confirmed
+        - failed
+        - manual_review
+        - expired
+    FulfillmentStatus:
+      type: string
+      enum: [not_started, processing, ready, failed, manual_review, refund_required]
+    OrderProduct:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        brand:
+          type: string
+        category:
+          type: string
+      required: [id, name, brand, category]
+    OrderPayment:
+      type: object
+      properties:
+        asset:
+          type: string
+        assetType:
+          oneOf:
+            - $ref: "#/components/schemas/PaymentAssetType"
+            - type: "null"
+        assetLogoUrl:
+          type: ["string", "null"]
+        network:
+          type: string
+        networkLogoUrl:
+          type: ["string", "null"]
+        amount:
+          type: string
+          description: Exact source asset amount to send to this order
+        rateMode:
+          type: ["string", "null"]
+          enum: [fixed, floating, null]
+        estimatedUsdcAmount:
+          type: ["string", "null"]
+          description: Provider estimate of USDC output; floating estimates can vary
+        address:
+          type: ["string", "null"]
+        memo:
+          type: [string, "null"]
+        expiresAt:
+          type: [string, "null"]
+          format: date-time
+        transactionHash:
+          type: [string, "null"]
+      required: [asset, assetType, assetLogoUrl, network, networkLogoUrl, amount, rateMode, estimatedUsdcAmount, address, memo, expiresAt, transactionHash]
+    PurchaseAccessLink:
+      type: object
+      properties:
+        purchaseToken:
+          type: string
+          minLength: 43
+          maxLength: 43
+      required: [purchaseToken]
+    PurchasePage:
+      type: object
+      properties:
+        brand: { type: string }
+        productName: { type: string }
+        productImageUrl: { type: ["string", "null"] }
+        amount: { type: number }
+        currency: { type: string }
+        region: { type: string }
+        paymentStatus: { type: string }
+        paymentAsset: { type: string }
+        paymentNetwork: { type: string }
+        hasCode: { type: boolean }
+        hasDownload: { type: boolean }
+        hasManualDetails:
+          type: boolean
+          description: Non-code redemption details or instructions that the customer should save
+        expirationDate: { type: ["string", "null"] }
+      required:
+        - brand
+        - productName
+        - productImageUrl
+        - amount
+        - currency
+        - region
+        - paymentStatus
+        - paymentAsset
+        - paymentNetwork
+        - hasCode
+        - hasDownload
+        - hasManualDetails
+        - expirationDate
+    PurchaseDelivery:
+      type: object
+      properties:
+        redemptionCode: { type: ["string", "null"] }
+        redemptionUrl: { type: ["string", "null"], format: uri }
+        redemptionPin: { type: ["string", "null"] }
+        redemptionInstructions: { type: ["string", "null"] }
+        expirationDate: { type: ["string", "null"] }
+      required:
+        - redemptionCode
+        - redemptionUrl
+        - redemptionPin
+        - redemptionInstructions
+        - expirationDate
+    PurchaseDeliveryEventInput:
+      type: object
+      properties:
+        eventType:
+          type: string
+          enum:
+            - CODE_COPIED
+            - FILE_DOWNLOAD_STARTED
+            - FILE_DOWNLOAD_COMPLETED
+            - REDEMPTION_LINK_OPENED
+      required: [eventType]
+    PurchaseEventRecorded:
+      type: object
+      properties:
+        recorded: { type: boolean }
+      required: [recorded]
+    PurchaseConsumeInput:
+      type: object
+      properties:
+        copiedCode: { type: boolean }
+        downloadedFile: { type: boolean }
+        savedInformation: { type: boolean }
+      required: [copiedCode, downloadedFile, savedInformation]
+    PurchaseConsumeResponse:
+      type: object
+      properties:
+        consumed: { type: boolean }
+      required: [consumed]
+    OrderEvent:
+      type: object
+      properties:
+        status:
+          $ref: "#/components/schemas/OrderStatus"
+        title:
+          type: string
+        description:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required: [status, title, description, createdAt]
+    Order:
+      type: object
+      properties:
+        orderId:
+          type: string
+        orderStatus:
+          $ref: "#/components/schemas/OrderStatus"
+        paymentStatus:
+          $ref: "#/components/schemas/PaymentStatus"
+        fulfillmentStatus:
+          $ref: "#/components/schemas/FulfillmentStatus"
+        product:
+          $ref: "#/components/schemas/OrderProduct"
+        region:
+          type: string
+        fiatAmount:
+          type: number
+        fiatCurrency:
+          type: string
+        payment:
+          $ref: "#/components/schemas/OrderPayment"
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderEvent"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - orderId
+        - orderStatus
+        - paymentStatus
+        - fulfillmentStatus
+        - product
+        - region
+        - fiatAmount
+        - fiatCurrency
+        - payment
+        - events
+        - createdAt
+        - updatedAt
+    RewardEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+          enum: [earned, spent]
+        amount:
+          type: number
+        currency:
+          type: string
+        description:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, kind, amount, currency, description, createdAt]
+    RewardsSummary:
+      type: object
+      properties:
+        availableBalance:
+          type: number
+        earned:
+          type: number
+        spent:
+          type: number
+        currency:
+          type: string
+        history:
+          type: array
+          items:
+            $ref: "#/components/schemas/RewardEntry"
+      required: [availableBalance, earned, spent, currency, history]
+
